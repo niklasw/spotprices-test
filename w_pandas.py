@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import time
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -13,6 +14,10 @@ from matplotlib import pyplot as plt
 API_KEY = os.getenv('ENTSOE_API_KEY')
 TIME_ZONE = 'Europe/Stockholm'
 TZ = tz.gettz(TIME_ZONE)
+
+
+def day_start(time: datetime):
+    return datetime(time.year, time.month, time.day, 0, 0, 0, 0, TZ)
 
 
 @dataclass
@@ -35,6 +40,8 @@ class TimeSlot:
 
 
 class TimeSlots:
+    required_hours = 6
+
     def __init__(self, start_times: list = []):
         self.start_times: list = start_times
         self.slots: list = []
@@ -64,27 +71,13 @@ class TimeSlots:
             time = datetime.now(TZ)
         return any((ts.inside(time) for ts in self.slots))
 
-    def as_pd_series(self):
-        """Only for plotting"""
-        times = []
-        values = []
-        for slot in self.slots:
-            times += [slot.start, slot.start, slot.end, slot.end]
-            values += [0, 1, 1, 0]
-        return pd.Series(data=values, index=times)
-
     def plottable(self, series):
-        values = []
-        for t in series.index:
-            values.append(1 if self.inside(t+timedelta(hours=0.5)) else 0)
-        return pd.Series(data=values, index=series.index)
-
-    def plottable2(self, series):
+        """Only for plotting"""
         t = series.index[0]
         t1 = series.index[-1] + timedelta(seconds=3600)
         values = []
         times = []
-        dt = timedelta(seconds=60)
+        dt = timedelta(seconds=36)
         while t < t1:
             t += dt
             times.append(t)
@@ -92,11 +85,14 @@ class TimeSlots:
         return pd.Series(data=values, index=times)
 
 
-class ENTSOE:
-    def __init__(self, cache_file):
+class PriceList:
+    cache_timeout_s = 6 * 3600
+
+    def __init__(self, cache_file, service):
         self.cache: Path = Path(cache_file)
-        self.meter = '60T'
-        self.query = None
+        self.service = service
+        self.query_result = None
+        self.prices: pd.TimeSeries = None
 
     def cache_age(self):
         if self.cache.exists():
@@ -105,39 +101,68 @@ class ENTSOE:
             st_mtime = 0
         return datetime.now(TZ) - datetime.fromtimestamp(st_mtime, TZ)
 
-    def fetch(self, use_cache):
-        if use_cache and self.cache.exists():
-            print('READING')
-            with self.cache.open('r') as f:
-                self.query = f.read()
-        else:
-            print('FETCHING')
-            client = EntsoeRawClient(api_key=API_KEY)
-            start = pd.Timestamp(datetime.now(), tz=TIME_ZONE)
-            end = pd.Timestamp(datetime.now() + timedelta(days=1),
-                               tz=TIME_ZONE)
-            country_code = 'SE_3'
-            query = client.query_day_ahead_prices(country_code, start, end)
-            with self.cache.open('w') as f:
-                f.write(query)
-            self.query = query
+    def cache_write(self):
+        if self.prices is not None:
+            self.prices.to_json(self.cache, typ='series')
+
+    def cache_read(self):
+        p = pd.read_json(self.cache, typ='series').tz_localize('UTC')
+        self.prices = p.tz_convert(TIME_ZONE)
 
     def get_prices(self):
-        use_cache = self.cache_age().total_seconds() < 6*3600
-        self.fetch(use_cache)
-        return parsers.parse_prices(self.query)[self.meter]
+        use_cache = self.cache_age().total_seconds() < self.cache_timeout_s
+        if use_cache:
+            print('READING')
+            self.cache_read()
+        else:
+            print('FETCHING')
+            self.prices = self.service.get_prices()
+            self.cache_write()
 
     def get_daily_prices(self):
-        prices = self.get_prices()
-        # groupby returns a list of tuples (date, series)
-        return prices.groupby(prices.index.date)
+        self.get_prices()
+        groups = self.prices.groupby(self.prices.index.date)
+        # groupby returns a list of tuples (date, series), so filter out
+        # the actual series.
+        return [g[1] for g in groups]
+
+    def cheapest_hours(self, prices: pd.Series, n_required_hours: int):
+        cheapest = prices.sort_values()[0:n_required_hours]
+        start_times = []
+        for start_time in cheapest.index.sort_values():
+            start_time = start_time.replace(tzinfo=TZ)
+            start_times.append(start_time)
+        return start_times
+
+    def find_slots(self, slots: TimeSlots = None):
+        h = TimeSlots.required_hours
+        if slots is None:
+            slots = TimeSlots()
+        for day in self.get_daily_prices():
+            slots.append(self.cheapest_hours(day, h))
+        return slots
 
 
-def cheapest_hours(prices, n_required_hours: int):
-    cheapest = prices.sort_values()[0:n_required_hours]
-    for start_time in cheapest.index.sort_values():
-        start_time = start_time.replace(tzinfo=TZ)
-        yield start_time  # .to_pydatetime()
+class Entsoe:
+    def __init__(self, cache_file):
+        self.meter = '60T'
+
+    def fetch(self):
+        client = EntsoeRawClient(api_key=API_KEY)
+        start = pd.Timestamp(datetime.now(), tz=TIME_ZONE)
+        end = pd.Timestamp(datetime.now() + timedelta(days=1),
+                           tz=TIME_ZONE)
+        country_code = 'SE_3'
+        query = client.query_day_ahead_prices(country_code, start, end)
+        return query
+
+    def get_prices(self):
+        """The price list seems to be given in Greenwich time zone,
+           so must convert index to time zone."""
+        query_result = self.fetch()
+        price_series = parsers.parse_prices(query_result)[self.meter]
+        price_series.index = price_series.index.tz_convert(TIME_ZONE)
+        return price_series
 
 
 def test_run(slots):
@@ -147,38 +172,30 @@ def test_run(slots):
 
 
 def plot(prices, slots):
-    _, (ax1, ax2) = plt.subplots(2, 1, sharex=False)
+    _, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
     x = prices.index
     slots.plot(ax=ax1, kind='line', color='red')
-    prices.plot(ax=ax2, kind='line', marker='o', color='green')
-    ax1.set_xlim(x[0], x[-1])
-    ax2.set_xlim(x[0], x[-1])
+    prices.plot(ax=ax2, kind='line', color='green', drawstyle='steps-post')
+    ax1.set_xlim(x[0], x[-1]+timedelta(hours=1))
+    ax1.set_title('on/off signal, 6 hours daily demand')
+    ax2.set_xlim(x[0], x[-1]+timedelta(hours=1))
+    ax2.set_title('spot price')
     ax1.grid('on')
     ax2.grid('on')
     plt.show()
 
 
 if __name__ == '__main__':
-    collector = ENTSOE('cache.xml')
-    day_prices = collector.get_daily_prices()
-    slots = TimeSlots()
-    for day in day_prices:
-        print(day[0])
-        cheapest = list(cheapest_hours(day[1], 4))
-        slots.append(cheapest)
-        for item in cheapest:
-            print('>>> ', item)
+    TimeSlots.required_hours = int(sys.argv[1])
 
-    for slot in slots.slots:
-        print('+++', slot)
+    price_list = PriceList('prices.json', Entsoe('cache.xml'))
+    slots = price_list.find_slots()
 
-    print('is this a good time?')
     if slots.inside():
         print(' -yes')
     else:
         print(' -no')
 
-    prices = pd.concat((a[1] for a in day_prices))
-    plot(prices, slots.plottable2(prices))
-    # plot(prices, slots.as_pd_series())
-    # test_run(slots)
+    for slot in slots.slots:
+        print(slot)
+    plot(price_list.prices, slots.plottable(price_list.prices))
