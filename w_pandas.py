@@ -144,7 +144,7 @@ class PriceList:
 
 
 class Entsoe:
-    def __init__(self, cache_file):
+    def __init__(self):
         self.meter = '60T'
 
     def fetch(self):
@@ -188,7 +188,7 @@ def plot(prices, slots):
 if __name__ == '__main__':
     TimeSlots.required_hours = int(sys.argv[1])
 
-    price_list = PriceList('prices.json', Entsoe('cache.xml'))
+    price_list = PriceList('prices.json', Entsoe())
     slots = price_list.find_slots()
 
     if slots.inside():
