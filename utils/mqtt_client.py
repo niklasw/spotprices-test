@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
+from . import log
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
 import signal
 import time
 import sys
-
 
 @dataclass
 class server_info:
@@ -40,20 +40,16 @@ class hass_client(mqtt.Client):
         self.pub('available', 'online')
 
     def on_connect(self, client, userdata, flags, rc):
-        print(f'Connected. Result code {str(rc)}')
-        if hass_client.debug:
-            client.subscribe(self.topics['sys'].topic)
+        log(f'Connected. Result code {str(rc)}')
 
     def on_disconnect(self, client, userdata, rc):
-        print(f'Disconnecting. Result code {str(rc)}')
-        # self.pub('available', 'offline')
+        log(f'Disconnecting. Result code {str(rc)}')
 
     def on_message(self, client, userdata, msg):
-        print(f'Got message regarding {msg.topic} - {msg.payload}')
+        log(f'Got message regarding {msg.topic} - {msg.payload}')
 
     def pub(self, topic_name, payload):
         topic = self.topics[topic_name]
-        print(topic)
         self.publish(topic.topic,
                      payload=payload,
                      qos=topic.qos,

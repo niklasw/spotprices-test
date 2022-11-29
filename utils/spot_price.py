@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from . import log
 import os
 import time
 from datetime import datetime, timedelta
@@ -115,13 +116,13 @@ class PriceList:
         self.prices = p.tz_convert(TIME_ZONE)
 
     def get_prices(self):
-        print('Updating price list')
+        log('Updating price list')
         use_cache = self.cache_age().total_seconds() < self.cache_timeout_s
         if use_cache:
-            print('READING')
+            log('reading price list')
             self.cache_read()
         else:
-            print('FETCHING')
+            log('fetching price list')
             self.prices = self.service.get_prices()
             self.cache_write()
 
