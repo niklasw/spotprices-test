@@ -1,0 +1,6 @@
+version: "3.9"
+services:
+  spot_price:
+    image: "niklas.wikstrom/spot_price:latest"
+    environment:
+      ENTSOE_API_KEY: create-entsoe-account-to-get-key

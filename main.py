@@ -26,12 +26,13 @@ def run_client():
         try:
             price_list.update()
             price = price_list.current_price()
-            consumer_size = price_list.current_slot_size()
+            consumer_size = price_list.current_ranking()
             message = {'price': price, 'slot': consumer_size}
             client.pub('pub', json.dumps(message))
-            client.pub('available', json.dumps(message))
+            client.pub('available', 'online')
             time.sleep(30)
-        except (RuntimeError, KeyboardInterrupt):
+        except (Exception, KeyboardInterrupt, SystemExit) as e:
+            print(e)
             client.disconnect()
             break
 
