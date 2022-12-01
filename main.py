@@ -2,6 +2,7 @@
 
 from utils.spot_price import PriceList, Entsoe
 from utils.mqtt_client import hass_client, hass_topic, server_info
+from utils import log
 import json
 import time
 from threading import Thread
@@ -24,12 +25,20 @@ def run_client():
     client.connect()
     while True:
         try:
-            price_list.update()
+            try:
+                price_list.update()
+            except Exception as e:
+                log(e)
+                log('Failed to update price list. Sleeping for 5 minutes.')
+                client.pub('available', 'offline')
+                time.sleep(5*60)
+                continue
             price = price_list.current_price()
             consumer_size = price_list.current_ranking()
             message = {'price': price, 'slot': consumer_size}
             client.pub('pub', json.dumps(message))
             client.pub('available', 'online')
+            log(str(message))
             time.sleep(30)
         except (Exception, KeyboardInterrupt, SystemExit) as e:
             print(e)

@@ -8,7 +8,6 @@ from entsoe import EntsoeRawClient, parsers
 from pathlib import Path
 import pandas as pd
 
-API_KEY = os.getenv('ENTSOE_API_KEY')
 TIME_ZONE = 'Europe/Stockholm'
 TZ = tz.gettz(TIME_ZONE)
 
@@ -94,18 +93,18 @@ class PriceList:
         return 24
 
 
-
 class Entsoe:
     def __init__(self):
         self.meter = '60T'
+        API_KEY = os.getenv('ENTSOE_API_KEY')
+        self.client = EntsoeRawClient(api_key=API_KEY)
 
     def fetch(self):
-        client = EntsoeRawClient(api_key=API_KEY)
         start = pd.Timestamp(datetime.now(), tz=TIME_ZONE)
         end = pd.Timestamp(datetime.now() + timedelta(days=1),
                            tz=TIME_ZONE)
         country_code = 'SE_3'
-        query = client.query_day_ahead_prices(country_code, start, end)
+        query = self.client.query_day_ahead_prices(country_code, start, end)
         return query
 
     def get_prices(self):
