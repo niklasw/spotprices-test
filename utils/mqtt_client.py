@@ -7,6 +7,7 @@ import signal
 import time
 import sys
 
+
 @dataclass
 class server_info:
     address: str = '192.168.10.200'

@@ -3,10 +3,50 @@
 from utils.spot_price import PriceList, Entsoe
 from utils.mqtt_client import hass_client, hass_topic, server_info
 from utils import log
+from utils import sensors
 import json
 import time
 from threading import Thread
 # import sys
+
+
+def create_tsensors_client():
+    client = hass_client()
+    client.server = server_info(address='192.168.10.200')
+    client.topics['temperatures'] = \
+        hass_topic('homeassistant/temperature/mysensors', False, 0)
+    client.topics['available'] = \
+        hass_topic('homeassistant/temperature/online', False, 0)
+    return client
+
+
+def run_tsensors():
+    client = create_tsensors_client()
+    client.connect()
+    w1_map = {'3c01b607b5a1': 'pool_pipes',
+              '3c01b607ee7e': 'pool_water'}
+    http_map = {'https://minglarn.se/ha_sensor.php': 'minglarn_weather'}
+
+    w1_s = sensors.w1_sensors(w1_map)
+    http_s = sensors.http_sensors(http_map)
+    while True:
+        result = {}
+        try:
+            if w1_s.kernel_ok:
+                result = {**result, **(w1_s.get_temperatures())}
+            result = {**result, **(http_s.get_temperatures())}
+            if result:
+                client.pub('available', 'online')
+                client.pub('temperatures', json.dumps(result))
+                log(json.dumps(result))
+            else:
+                client.pub('available', 'offline')
+                log('temperature sensors offline')
+            time.sleep(60)
+        except (Exception, KeyboardInterrupt, SystemExit) as e:
+            print(e)
+            client.disconnect()
+            break
 
 
 def create_client():
@@ -49,7 +89,12 @@ def run_client():
 if __name__ == '__main__':
     price_list = PriceList('prices.json', Entsoe())
 
-    daemon = Thread(target=run_client,
-                    daemon=True,
-                    name='mqtt_client')
-    daemon.run()
+    price_daemon = Thread(target=run_client,
+                          daemon=True,
+                          name='mqtt_price_client')
+    price_daemon.start()
+
+    temp_daemon = Thread(target=run_tsensors,
+                         daemon=True,
+                         name='tsensors_client')
+    temp_daemon.run()

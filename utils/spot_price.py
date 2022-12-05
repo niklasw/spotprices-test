@@ -114,3 +114,11 @@ class Entsoe:
         price_series = parsers.parse_prices(query_result)[self.meter]
         price_series.index = price_series.index.tz_convert(TIME_ZONE)
         return price_series
+
+
+def test():
+    price_list = PriceList('prices.json', Entsoe())
+    price_list.update()
+
+    print(price_list.current_price())
+    print(price_list.current_ranking())
