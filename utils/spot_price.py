@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 
 from . import log
+from .mqtt_client import hass_client, hass_topic, server_info
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
 from entsoe import EntsoeRawClient, parsers
 from pathlib import Path
+import time
+import json
 import pandas as pd
 
 TIME_ZONE = 'Europe/Stockholm'
@@ -114,6 +117,44 @@ class Entsoe:
         price_series = parsers.parse_prices(query_result)[self.meter]
         price_series.index = price_series.index.tz_convert(TIME_ZONE)
         return price_series
+
+
+def create_client():
+    client = hass_client()
+    client.server = server_info(address='192.168.10.200')
+    client.topics['pub'] = \
+        hass_topic('homeassistant/power/price/info', False, 0)
+    client.topics['available'] = \
+        hass_topic('homeassistant/power/price/online', False, 0)
+    log(client.topics)
+    return client
+
+
+def run_client():
+    price_list = PriceList('prices.json', Entsoe())
+    client = create_client()
+    client.connect()
+    while True:
+        try:
+            try:
+                price_list.update()
+            except Exception as e:
+                log(e)
+                log('Failed to update price list. Sleeping for 5 minutes.')
+                client.pub('available', 'offline')
+                time.sleep(5*60)
+                continue
+            price = price_list.current_price()
+            consumer_size = price_list.current_ranking()
+            message = {'price': price, 'slot': consumer_size}
+            client.pub('pub', json.dumps(message))
+            client.pub('available', 'online')
+            log(str(message))
+            time.sleep(30)
+        except (Exception, KeyboardInterrupt, SystemExit) as e:
+            print(e)
+            client.disconnect()
+            break
 
 
 def test():
