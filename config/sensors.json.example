@@ -1,0 +1,25 @@
+{
+    "server": {
+        "address": "192.168.x.x",
+        "port": 1883,
+        "protocol": "tcp"
+    },
+    "topics": {
+        "temperatures": {
+            "topic": "homeassistant/temperature/mysensors"
+        },
+        "available": {
+            "topic": "homeassistant/temperature/online"
+        }
+    },
+    "sensors": {
+        "w1": {
+            "pool_pipes": "3c01b607b5a1",
+            "pool_water": "3c01b607ee7e",
+            "house_hall": "0120358fb53e"
+        },
+        "http": {
+            "minglarn_weather": "https://some.rest.rurl"
+        }
+    }
+}

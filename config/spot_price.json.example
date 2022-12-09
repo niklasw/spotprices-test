@@ -1,0 +1,16 @@
+{
+    "server": {
+        "address": "192.168.x.x",
+        "port": 1883,
+        "protocol": "tcp"
+    },
+    "topics": {
+        "pub": {
+            "topic": "homeassistant/energy/price/info"
+        },
+        "available": {
+            "topic": "homeassistant/energy/price/online"
+        }
+    }
+}
+
