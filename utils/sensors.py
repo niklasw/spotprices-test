@@ -88,6 +88,7 @@ class mqtt_sensors:
             self.sensors.append(sensor_class(sensor_conf))
 
     def run(self):
+        self.client.connect()
         while True:
             result = {}
             try:
@@ -108,7 +109,6 @@ class mqtt_sensors:
 
 
 def test():
-    CONFIG = config(open('sensors.json'))
+    CONFIG = config(open('config/sensors.json'))
     worker = mqtt_sensors(CONFIG)
-    worker.client.connect()
     worker.run()

@@ -37,7 +37,11 @@ class hass_client(mqtt.Client):
         self.QoS: int = 1
 
     def connect(self):
-        super().connect(self.server.address, self.server.port, keepalive=60)
+        try:
+            super().connect(self.server.address, self.server.port, keepalive=60)
+        except:
+            log('Can not connect to mqtt server.')
+            sys.exit(1)
         self.pub('available', 'online')
 
     def on_connect(self, client, userdata, flags, rc):
