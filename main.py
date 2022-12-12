@@ -19,7 +19,7 @@ with open('config/sensors.json') as cf:
 sensors = mqtt_sensors(conf2)
 t2 = Thread(target=sensors.run,
             daemon=True,
-            name='tsensors_client').run()
+            name='tsensors_client')
 t2.start()
 
 t1.join()
