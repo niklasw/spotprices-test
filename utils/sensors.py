@@ -105,8 +105,11 @@ class mqtt_sensors:
                 time.sleep(60)
             except (Exception, KeyboardInterrupt, SystemExit) as e:
                 print(e)
-                self.client.disconnect()
                 break
+        self.client.pub('available', 'offline')
+        self.client.loop_stop()
+        self.client.disconnect()
+
 
 
 def test():

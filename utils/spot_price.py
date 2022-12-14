@@ -151,8 +151,10 @@ class mqtt_spot_price:
                 time.sleep(30)
             except (Exception, KeyboardInterrupt, SystemExit) as e:
                 print(e)
-                self.client.disconnect()
                 break
+        self.client.pub('available', 'offline')
+        self.client.loop_stop()
+        self.client.disconnect()
 
 
 def test():

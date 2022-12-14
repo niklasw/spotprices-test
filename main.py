@@ -12,7 +12,6 @@ spot_price = mqtt_spot_price(conf1)
 t1 = Thread(target=spot_price.run,
             daemon=True,
             name='spot_price_client')
-t1.start()
 
 with open('config/sensors.json') as cf:
     conf2 = config(cf)
@@ -20,7 +19,10 @@ sensors = mqtt_sensors(conf2)
 t2 = Thread(target=sensors.run,
             daemon=True,
             name='tsensors_client')
+t1.start()
 t2.start()
+
+print('Threads started')
 
 t1.join()
 t2.join()
