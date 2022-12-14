@@ -11,9 +11,10 @@ class config(dict):
 
     def __init__(self, json_file):
         super().__init__(json.load(json_file))
-        self.sensors: dict = self['sensors']
-        self.topics: dict = self['topics']
-        self.server: dict = self['server']
+        self.sensors: dict = self.get('sensors')
+        self.topics: dict = self.get('topics')
+        self.server: dict = self.get('server')
+        self.db: dict = self.get('db')
 
     @classmethod
     def inv(cls, d):

@@ -38,7 +38,9 @@ class hass_client(mqtt.Client):
 
     def connect(self):
         try:
-            super().connect(self.server.address, self.server.port, keepalive=60)
+            super().connect(self.server.address, self.server.port,
+                            keepalive=60)
+            self.loop_start()
         except:
             log('Can not connect to mqtt server.')
             sys.exit(1)
@@ -62,7 +64,11 @@ class hass_client(mqtt.Client):
 
     def disconnect(self):
         self.pub('available', 'offline')
+        self.loop_stop()
         super().disconnect()
+
+    def loop(self):
+        super().loop_forever()
 
 
 if __name__ == '__main__':
