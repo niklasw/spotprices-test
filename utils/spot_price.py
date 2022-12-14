@@ -131,6 +131,7 @@ class mqtt_spot_price:
     def run(self):
         price_list = PriceList('prices.json', Entsoe())
         self.client.connect()
+        self.client.loop_start()
         while True:
             try:
                 try:

@@ -40,7 +40,6 @@ class hass_client(mqtt.Client):
         try:
             super().connect(self.server.address, self.server.port,
                             keepalive=60)
-            self.loop_start()
         except:
             log('Can not connect to mqtt server.')
             sys.exit(1)

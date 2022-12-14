@@ -89,9 +89,8 @@ class mqtt_sensors:
 
     def run(self):
         self.client.connect()
+        self.client.loop_start()
         while True:
-            if not self.client.is_connected():
-                self.client.connect()
             result = {}
             try:
                 for s in self.sensors:
