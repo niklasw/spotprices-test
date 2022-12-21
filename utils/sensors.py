@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from . import log, config
-from .mqtt_client import hass_client, hass_topic, server_info
+from .mqtt_client import mqtt_worker
 import time
 import json
 import requests
@@ -12,6 +12,11 @@ try:
 except Exception as e:
     W1_SENSORS_OK = False
     log(e)
+
+
+class MyTemperatureException(Exception):
+    def __init__(self, message='Temperature exception raised'):
+        super().__init__(message=message)
 
 
 class http_sensors:
@@ -28,19 +33,24 @@ class http_sensors:
     def get_temperatures(self):
         result = {}
         for url, name in self.url_map.items():
-            temperature = -1000
-            r = requests.get(url)
+            try:
+                r = requests.get(url)
+            except Exception:
+                log(f'http_sensors requests exception for sensor {name}')
+                continue
             if r.status_code == 200:
                 try:
                     json_response = r.json()
                 except Exception as e:
-                    log(f'Result error from {url}. {e}')
+                    log(f'http_sensors error for sensor {name}'
+                        f'from {url}. {e}')
+                    continue
                 temp = self.parser(json_response)
                 if temp:
-                    temperature = temp
+                    result[name] = temp
             else:
-                log(f'Request error from {url} with status {r.status_code}')
-            result[name] = temperature
+                log(f'http_sensors: Request error from {url} '
+                    f'with status {r.status_code}')
         return result
 
     def json(self):
@@ -59,7 +69,10 @@ class w1_sensors:
             for s in W1ThermSensor.get_available_sensors():
                 if s.id in self.device_map:
                     name = self.device_map[s.id]
-                    result[name] = s.get_temperature()
+                    try:
+                        result[name] = s.get_temperature()
+                    except Exception:
+                        log(f'w1_sensors exception for sensor {name}')
         else:
             log('No w1_sensors result since kernel modules fails')
         return result
@@ -68,48 +81,35 @@ class w1_sensors:
         return json.dumps(self.get_temperatures())
 
 
-class mqtt_sensors:
+class mqtt_sensors(mqtt_worker):
+
+    exception_delay = 5*60
+    execution_delay = 5*60
 
     type_map = {'w1': w1_sensors,
                 'http': http_sensors,
                 }
 
     def __init__(self, conf: config):
-        self.client = hass_client()
-        self.client.server = server_info(**conf.server)
-        for topic, value in conf.topics.items():
-            self.client.topics[topic] = hass_topic(**value)
-        log(self.client.topics)
-
-        self.sensors = []
-        for sensor_type, value in conf.sensors.items():
+        super().__init__(conf)
+        for sensor_type, value in conf.sources.items():
             sensor_class = self.type_map[sensor_type]
-            sensor_conf = conf.sensors[sensor_type]
-            self.sensors.append(sensor_class(sensor_conf))
+            sensor_conf = conf.sources[sensor_type]
+            self.sources.append(sensor_class(sensor_conf))
 
-    def run(self):
-        self.client.connect()
-        self.client.loop_start()
-        while True:
-            result = {}
-            try:
-                for s in self.sensors:
-                    result = {**result, **(s.get_temperatures())}
-                if result:
-                    self.client.pub('available', 'online')
-                    self.client.pub('temperatures', json.dumps(result))
-                    log(json.dumps(result))
-                else:
-                    self.client.pub('available', 'offline')
-                    log('temperature sensors offline')
-                time.sleep(60)
-            except (Exception, KeyboardInterrupt, SystemExit) as e:
-                print(e)
-                break
-        self.client.pub('available', 'offline')
-        self.client.loop_stop()
-        self.client.disconnect()
-
+    def action(self):
+        result = {}
+        for s in self.sources:
+            result = {**result, **(s.get_temperatures())}
+        if result:
+            self.client.pub('available', 'online')
+            self.client.pub('temperatures', json.dumps(result))
+            log(json.dumps(result))
+            time.sleep(self.execution_delay)
+        else:
+            self.client.pub('available', 'offline')
+            log('temperature sensors offline')
+            time.sleep(self.exception_delay)
 
 
 def test():

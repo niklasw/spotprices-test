@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from . import log
+from . import log, config
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
 import signal
@@ -40,7 +40,7 @@ class hass_client(mqtt.Client):
         try:
             super().connect(self.server.address, self.server.port,
                             keepalive=60)
-        except:
+        except Exception:
             log('Can not connect to mqtt server.')
             sys.exit(1)
         self.pub('available', 'online')
@@ -68,6 +68,33 @@ class hass_client(mqtt.Client):
 
     def loop(self):
         super().loop_forever()
+
+
+class mqtt_worker:
+
+    def __init__(self, conf: config):
+        self.client = hass_client()
+        self.client.server = server_info(**conf.server)
+        for topic, value in conf.topics.items():
+            self.client.topics[topic] = hass_topic(**value)
+        log(self.client.topics)
+
+        self.sources = []
+
+    def action(self):
+        pass
+
+    def run(self):
+        self.client.connect()
+        self.client.loop_start()
+        while True:
+            try:
+                self.action()
+            except (KeyboardInterrupt, SystemExit):
+                break
+        self.client.pub('available', 'offline')
+        self.client.loop_stop()
+        self.client.disconnect()
 
 
 if __name__ == '__main__':

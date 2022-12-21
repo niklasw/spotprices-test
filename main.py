@@ -8,17 +8,17 @@ from threading import Thread
 
 with open('config/spot_price.json') as cf:
     conf1 = config(cf)
-spot_price = mqtt_spot_price(conf1)
-t1 = Thread(target=spot_price.run,
-            daemon=True,
-            name='spot_price_client')
+    spot_price = mqtt_spot_price(conf1)
+    t1 = Thread(target=spot_price.run,
+                daemon=True,
+                name='spot_price_client')
 
 with open('config/sensors.json') as cf:
     conf2 = config(cf)
-sensors = mqtt_sensors(conf2)
-t2 = Thread(target=sensors.run,
-            daemon=True,
-            name='tsensors_client')
+    sensors = mqtt_sensors(conf2)
+    t2 = Thread(target=sensors.run,
+                daemon=True,
+                name='tsensors_client')
 t1.start()
 t2.start()
 
