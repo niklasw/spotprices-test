@@ -4,7 +4,12 @@ FROM python:3.10-slim-buster
 
 WORKDIR /app
 
-RUN pip3 install entsoe-py python-dateutil paho-mqtt requests w1thermsensor
+RUN pip3 install entsoe-py \
+                 python-dateutil \
+                 paho-mqtt \
+                 requests \
+                 w1thermsensor \
+                 dotted-dict
 
 COPY main.py .
 COPY utils ./utils
