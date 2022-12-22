@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from . import log, config
-from .mqtt_client import mqtt_worker
+from . import log, err, config
+from .mqtt_client import mqtt_publisher
 import time
 import json
 import requests
@@ -81,20 +81,47 @@ class w1_sensors:
         return json.dumps(self.get_temperatures())
 
 
-class mqtt_sensors(mqtt_worker):
+class mqtt_sensors(mqtt_publisher):
 
-    exception_delay = 5*60
-    execution_delay = 5*60
+    def __init__(self, conf: config):
+        super().__init__(conf)
+        self.type_map = {'w1': w1_sensors,
+                         'http': http_sensors,
+                         }
+        for sensor_type, value in conf.sources.items():
+            sensor_class = self.type_map[sensor_type]
+            sensor_conf = conf.sources[sensor_type]
+            self.sources.append(sensor_class(sensor_conf))
+
+    def action(self):
+        result = {}
+        for s in self.sources:
+            result = {**result, **(s.get_temperatures())}
+        if result:
+            self.client.pub('available', 'online')
+            self.client.pub('temperatures', json.dumps(result))
+            log(json.dumps(result))
+            time.sleep(self.execution_delay)
+        else:
+            self.client.pub('available', 'offline')
+            log('temperature sensors offline')
+            time.sleep(self.exception_delay)
+
+
+class mqtt_sensor(mqtt_publisher):
 
     type_map = {'w1': w1_sensors,
                 'http': http_sensors,
                 }
 
-    def __init__(self, conf: config):
+    def __init__(self, conf: config, type_name: str):
+        if type_name not in set(self.type_map) & set(conf.sources):
+            err('Error in sensor sources. Type names missing')
+
         super().__init__(conf)
-        for sensor_type, value in conf.sources.items():
-            sensor_class = self.type_map[sensor_type]
-            sensor_conf = conf.sources[sensor_type]
+        if type_name in self.type_map:
+            sensor_class = self.type_map[type_name]
+            sensor_conf = conf.sources[type_name]
             self.sources.append(sensor_class(sensor_conf))
 
     def action(self):

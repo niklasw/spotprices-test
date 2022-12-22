@@ -3,8 +3,6 @@
 from . import log, config
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
-import signal
-import time
 import sys
 
 
@@ -70,7 +68,10 @@ class hass_client(mqtt.Client):
         super().loop_forever()
 
 
-class mqtt_worker:
+class mqtt_publisher:
+
+    exception_delay = 5*60
+    execution_delay = 5*60
 
     def __init__(self, conf: config):
         self.client = hass_client()
@@ -91,31 +92,10 @@ class mqtt_worker:
             try:
                 self.action()
             except (KeyboardInterrupt, SystemExit):
+                self.offline()
                 break
-        self.client.pub('available', 'offline')
         self.client.loop_stop()
         self.client.disconnect()
 
-
-if __name__ == '__main__':
-    def signal_handler(signal, frame):
-        print('Exiting')
-        client.disconnect()
-        time.sleep(1)
-        sys.exit(0)
-
-    client = hass_client()
-    client.debug = True
-    client.topics['available'] = \
-        hass_topic(topic='homeassistant/test/available', retain=False, qos=0)
-    client.topics['test'] = \
-        hass_topic(topic='homeassistant/test/topic', retain=False, qos=0)
-    client.connect()
-    signal.signal(signal.SIGINT, signal_handler)
-    for i in range(10):
-        client.pub('test', i)
-        time.sleep(0.1)
-    client.pub('test', '----------------')
-    client.disconnect()
-
-    # client.loop_forever()
+    def offline(self):
+        self.client.pub('available', 'offline')

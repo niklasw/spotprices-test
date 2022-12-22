@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from . import log, config
-from .mqtt_client import mqtt_worker
+from .mqtt_client import mqtt_publisher
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -71,7 +71,8 @@ class PriceList:
                 log(f'get_prices failed with {e}')
         if new_prices is not None:
             self.prices = new_prices
-            self.cache_write()
+            if not use_cache:
+                self.cache_write()
             return True
 
     def get_daily_prices(self, today=False):
@@ -141,9 +142,7 @@ class Entsoe:
         return None
 
 
-class mqtt_spot_price(mqtt_worker):
-
-    exception_delay = 5*60
+class mqtt_spot_price(mqtt_publisher):
 
     def __init__(self, conf: config):
         super().__init__(conf)
@@ -156,7 +155,6 @@ class mqtt_spot_price(mqtt_worker):
             log(e)
             log('mqtt_spot_price: Failed to update price list.'
                 f'Sleeping for {self.exception_delay/60} minutes.')
-            time.sleep(self.exception_delay)
             self.client.pub('available', 'offline')
             time.sleep(self.exception_delay)
             return
@@ -166,7 +164,7 @@ class mqtt_spot_price(mqtt_worker):
             self.client.pub('pub', json.dumps(message))
             self.client.pub('available', 'online')
             log(str(message))
-            time.sleep(30)
+            time.sleep(self.execution_delay)
 
 
 def test():
