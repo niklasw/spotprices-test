@@ -1,5 +1,5 @@
 from datetime import datetime
-from dotted_dict import DottedDict
+# from dotted_dict import DottedDict
 import json
 import sys
 
@@ -15,10 +15,12 @@ def err(msg, x=1):
     sys.exit(x)
 
 
-class config(DottedDict):
+class config(dict):
 
     def __init__(self, json_file):
         super().__init__(json.load(json_file))
+        self.server = self['server']
+        self.sources = self['sources']
 
     @classmethod
     def inv(cls, d):

@@ -7,19 +7,17 @@ from threading import Thread
 
 
 def run_threads():
-    with open('config/spot_price.json') as cf:
-        conf1 = config(cf)
-        spot_price = mqtt_spot_price(conf1)
+    with open('config/sensors.json') as cf:
+        conf = config(cf)
+        spot_price = mqtt_spot_price(conf, 'entsoe')
         spot_price.exception_delay = 60
 
         p1 = Thread(target=spot_price.run,
                     daemon=True,
                     name='spot_price_client')
 
-    with open('config/sensors.json') as cf:
-        conf2 = config(cf)
-        w1_sensors = mqtt_sensor(conf2, 'w1')
-        http_sensors = mqtt_sensor(conf2, 'http')
+        w1_sensors = mqtt_sensor(conf, 'w1')
+        http_sensors = mqtt_sensor(conf, 'http')
         w1_sensors.execution_delay = 60
         http_sensors.execution_delay = 5*60
 

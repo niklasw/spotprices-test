@@ -4,6 +4,7 @@ from . import log, config
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
 import sys
+import time
 
 
 @dataclass
@@ -68,34 +69,40 @@ class hass_client(mqtt.Client):
         super().loop_forever()
 
 
-class mqtt_publisher:
+class mqtt_publisher(hass_client):
 
     exception_delay = 5*60
     execution_delay = 5*60
 
     def __init__(self, conf: config):
-        self.client = hass_client()
-        self.client.server = server_info(**conf.server)
-        for topic, value in conf.topics.items():
-            self.client.topics[topic] = hass_topic(**value)
-        log(self.client.topics)
+        super().__init__()
+        self.server = server_info(**conf.server)
+        self.conf = conf
 
-        self.sources = []
+    def read(self, name: str):
+        conf = self.conf.sources[name]
+        self.type_name = conf['type']
+        self.type_conf = conf['sensors']
+        self.topics['pub'] = hass_topic(topic=conf['topic'])
+        self.topics['available'] = hass_topic(topic=conf['available'])
 
     def action(self):
-        pass
+        return False
 
     def run(self):
-        self.client.connect()
-        self.client.loop_start()
+        self.connect()
+        self.loop_start()
         while True:
             try:
-                self.action()
+                if self.action():
+                    time.sleep(self.execution_delay)
+                else:
+                    time.sleep(self.exception_delay)
             except (KeyboardInterrupt, SystemExit):
                 self.offline()
                 break
-        self.client.loop_stop()
-        self.client.disconnect()
+        self.loop_stop()
+        self.disconnect()
 
     def offline(self):
-        self.client.pub('available', 'offline')
+        self.pub('available', 'offline')

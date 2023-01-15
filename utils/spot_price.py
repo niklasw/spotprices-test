@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from entsoe import EntsoeRawClient, parsers
 from pathlib import Path
-import time
 import json
 import pandas as pd
 
@@ -142,11 +141,19 @@ class Entsoe:
         return None
 
 
+class entsoe_price_list(PriceList):
+    def __init__(self, conf: dict):
+        cache_file = conf['0']['cache']
+        super().__init__(cache_file, Entsoe())
+
+
 class mqtt_spot_price(mqtt_publisher):
 
-    def __init__(self, conf: config):
+    def __init__(self, conf: config, name: str):
         super().__init__(conf)
-        self.price_list = PriceList('prices.json', Entsoe())
+        self.read(name)
+        sensor_class = globals()[self.type_name]
+        self.price_list = sensor_class(self.type_conf)
 
     def action(self):
         try:
@@ -156,18 +163,19 @@ class mqtt_spot_price(mqtt_publisher):
             log('mqtt_spot_price: Failed to update price list.'
                 f'Sleeping for {self.exception_delay/60} minutes.')
             self.client.pub('available', 'offline')
-            time.sleep(self.exception_delay)
-            return
+            return False
         if not self.price_list.prices.empty:
             message = {'price': self.price_list.current_price(),
                        'slot': self.price_list.current_ranking()}
-            self.client.pub('pub', json.dumps(message))
-            self.client.pub('available', 'online')
+            self.pub('pub', json.dumps(message))
+            self.pub('available', 'online')
             log(str(message))
-            time.sleep(self.execution_delay)
+            return True
+        else:
+            return False
 
 
 def test():
-    CONFIG = config(open('config/spot_price.json'))
-    worker = mqtt_spot_price(CONFIG)
+    CONFIG = config(open('config/sensors.json'))
+    worker = mqtt_spot_price(CONFIG, 'entsoe')
     worker.run()

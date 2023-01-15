@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
-from . import log, err, config
+from . import log, config
 from .mqtt_client import mqtt_publisher
-import time
 import json
 import requests
 
@@ -19,10 +18,25 @@ class MyTemperatureException(Exception):
         super().__init__(message=message)
 
 
-class http_sensors:
+class temperature_sensors:
 
-    def __init__(self, name_url_map: dict):
-        self.url_map = config.inv(name_url_map)
+    def __init__(self, conf: dict):
+        self.device_map = conf
+
+    def update(self):
+        return self.get_temperatures()
+
+    def get_temperature(self):
+        return {}
+
+    def json(self):
+        return json.dumps(self.get_temperatures())
+
+
+class http_sensors(temperature_sensors):
+
+    def __init__(self, conf: dict):
+        super().__init__(conf)
         self.parser = self.parse_temperature
 
     def parse_temperature(self, json_dict: dict):
@@ -32,11 +46,12 @@ class http_sensors:
 
     def get_temperatures(self):
         result = {}
-        for url, name in self.url_map.items():
+        for url, name in self.device_map.items():
             try:
                 r = requests.get(url)
             except Exception:
                 log(f'http_sensors requests exception for sensor {name}')
+                log(f'with url = {url}')
                 continue
             if r.status_code == 200:
                 try:
@@ -53,15 +68,12 @@ class http_sensors:
                     f'with status {r.status_code}')
         return result
 
-    def json(self):
-        return json.dumps(self.get_values())
 
+class w1_sensors(temperature_sensors):
 
-class w1_sensors:
-
-    def __init__(self, device_map: dict):
+    def __init__(self, conf: dict):
+        super().__init__(conf)
         self.kernel_ok = W1_SENSORS_OK
-        self.device_map = config.inv(device_map)
 
     def get_temperatures(self):
         result = {}
@@ -77,69 +89,30 @@ class w1_sensors:
             log('No w1_sensors result since kernel modules fails')
         return result
 
-    def json(self):
-        return json.dumps(self.get_temperatures())
-
-
-class mqtt_sensors(mqtt_publisher):
-
-    def __init__(self, conf: config):
-        super().__init__(conf)
-        self.type_map = {'w1': w1_sensors,
-                         'http': http_sensors,
-                         }
-        for sensor_type, value in conf.sources.items():
-            sensor_class = self.type_map[sensor_type]
-            sensor_conf = conf.sources[sensor_type]
-            self.sources.append(sensor_class(sensor_conf))
-
-    def action(self):
-        result = {}
-        for s in self.sources:
-            result = {**result, **(s.get_temperatures())}
-        if result:
-            self.client.pub('available', 'online')
-            self.client.pub('temperatures', json.dumps(result))
-            log(json.dumps(result))
-            time.sleep(self.execution_delay)
-        else:
-            self.client.pub('available', 'offline')
-            log('temperature sensors offline')
-            time.sleep(self.exception_delay)
-
 
 class mqtt_sensor(mqtt_publisher):
 
-    type_map = {'w1': w1_sensors,
-                'http': http_sensors,
-                }
-
-    def __init__(self, conf: config, type_name: str):
-        if type_name not in set(self.type_map) & set(conf.sources):
-            err('Error in sensor sources. Type names missing')
-
+    def __init__(self, conf: config, name: str):
         super().__init__(conf)
-        if type_name in self.type_map:
-            sensor_class = self.type_map[type_name]
-            sensor_conf = conf.sources[type_name]
-            self.sources.append(sensor_class(sensor_conf))
+        self.read(name)
+        sensor_class = globals()[self.type_name]
+        self.sensor = sensor_class(self.type_conf)
 
     def action(self):
         result = {}
-        for s in self.sources:
-            result = {**result, **(s.get_temperatures())}
+        result = {**result, **(self.sensor.update())}
         if result:
-            self.client.pub('available', 'online')
-            self.client.pub('temperatures', json.dumps(result))
+            self.pub('available', 'online')
+            self.pub('pub', json.dumps(result))
             log(json.dumps(result))
-            time.sleep(self.execution_delay)
+            return True
         else:
-            self.client.pub('available', 'offline')
+            self.pub('available', 'offline')
             log('temperature sensors offline')
-            time.sleep(self.exception_delay)
+            return False
 
 
 def test():
     CONFIG = config(open('config/sensors.json'))
-    worker = mqtt_sensors(CONFIG)
-    worker.run()
+    worker1 = mqtt_sensor(CONFIG, 'http')
+    worker1.run()
