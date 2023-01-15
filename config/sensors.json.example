@@ -1,25 +1,40 @@
 {
     "server": {
-        "address": "192.168.x.x",
+        "address": "192.168.10.200",
         "port": 1883,
         "protocol": "tcp"
     },
-    "topics": {
-        "temperatures": {
-            "topic": "homeassistant/temperature/mysensors"
-        },
-        "available": {
-            "topic": "homeassistant/temperature/online"
-        }
-    },
-    "sensors": {
+    "sources": {
         "w1": {
-            "pool_pipes": "3c01b607b5a1",
-            "pool_water": "3c01b607ee7e",
-            "house_hall": "0120358fb53e"
+            "type": "w1_sensors",
+            "topic": "homeassistant/temperature/w1_1",
+            "available": "homeassistant/temperature/w1_1/available",
+            "update_period": 60,
+            "sensors": {
+                 "3c01b607b5a1": "pool_pipes",
+                 "3c01b607ee7e": "pool_water",
+                 "0120358fb53e": "house_hall"
+            }
         },
         "http": {
-            "minglarn_weather": "https://some.rest.rurl"
+            "type": "http_sensors",
+            "topic": "homeassistant/temperature/http_1",
+            "available": "homeassistant/temperature/http_1/available",
+            "update_period": 300,
+            "sensors": {
+                 "https://minglarn.se/ha_sensor.php": "minglarn_weather"
+            }
+        },
+       "entsoe": {
+            "type": "entsoe_price_list",
+            "topic": "homeassistant/energy/price/info",
+            "available": "homeassistant/energy/price/available",
+            "update_period": 300,
+            "sensors": {
+                "0": {
+                    "cache": "prices.json"
+                }
+            }
         }
     }
 }
