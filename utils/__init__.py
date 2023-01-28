@@ -1,5 +1,4 @@
 from datetime import datetime
-# from dotted_dict import DottedDict
 import json
 import sys
 
@@ -7,6 +6,7 @@ import sys
 def log(msg):
     time = datetime.now().strftime('%Y%m%d-%H:%M:%S')
     print(f'{time:30s} {msg}')
+    sys.stdout.flush()
 
 
 def err(msg, x=1):

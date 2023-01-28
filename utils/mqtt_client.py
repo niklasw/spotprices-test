@@ -85,6 +85,10 @@ class mqtt_publisher(hass_client):
         self.type_conf = conf['sensors']
         self.topics['pub'] = hass_topic(topic=conf['topic'])
         self.topics['available'] = hass_topic(topic=conf['available'])
+        self.execution_delay = \
+            conf.get('update_period') or self.exception_delay
+        self.exception_delay = \
+            conf.get('retry_period') or self.execution_delay
 
     def action(self):
         return False
@@ -97,6 +101,7 @@ class mqtt_publisher(hass_client):
                 if self.action():
                     time.sleep(self.execution_delay)
                 else:
+                    self.offline()
                     time.sleep(self.exception_delay)
             except (KeyboardInterrupt, SystemExit):
                 self.offline()

@@ -5,9 +5,9 @@ from .mqtt_client import mqtt_publisher
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
-from entsoe import EntsoeRawClient, parsers
 from pathlib import Path
 import json
+from entsoe import EntsoeRawClient, parsers
 import pandas as pd
 
 TIME_ZONE = 'Europe/Stockholm'
@@ -90,9 +90,12 @@ class PriceList:
                 self.last_updated = datetime.now(TZ)
 
     def current_price(self):
+        return self.instant_price(datetime.now(TZ))
+
+    def instant_price(self, now):
         """Filter out current hourly price from price list"""
-        now = datetime.now(TZ)
         today = self.prices[self.prices.index.day == now.day]
+        print(self.prices.index[0], self.prices.index[-1])
         price = today[today.index.hour == now.hour].values[0]
         try:
             float(price)
@@ -165,8 +168,12 @@ class mqtt_spot_price(mqtt_publisher):
             self.client.pub('available', 'offline')
             return False
         if not self.price_list.prices.empty:
-            message = {'price': self.price_list.current_price(),
-                       'slot': self.price_list.current_ranking()}
+            p_now = self.price_list.current_price()
+            p_fut = self.price_list.instant_price(datetime.now(TZ)
+                                                  + timedelta(hours=12))
+            message = {'price': p_now,
+                       'slot': self.price_list.current_ranking(),
+                       'future_price': p_fut}
             self.pub('pub', json.dumps(message))
             self.pub('available', 'online')
             log(str(message))
