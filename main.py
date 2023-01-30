@@ -3,6 +3,7 @@
 from utils import config, log
 from threading import Thread
 from utils.sensors import mqtt_sensor
+import os
 
 
 def my_import(name):
@@ -35,4 +36,5 @@ def run_sensors():
         thread.join()
 
 
+print(f'PID: {os.getpid()}')
 run_sensors()
