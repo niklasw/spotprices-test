@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
-from . import log, config
-from .mqtt_client import mqtt_publisher
+from . import log
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
 from pathlib import Path
-import json
-from entsoe import EntsoeRawClient, parsers
-import pandas as pd
+try:
+    import pandas as pd
+    from entsoe import EntsoeRawClient, parsers
+    ENTSOE_OK = True
+except Exception as e:
+    ENTSOE_OK = False
+    log(e)
 
 TIME_ZONE = 'Europe/Stockholm'
 TZ = tz.gettz(TIME_ZONE)
@@ -88,6 +91,12 @@ class PriceList:
         if (datetime.now(TZ) - self.last_updated) > self.update_interval:
             if self.get_prices():
                 self.last_updated = datetime.now(TZ)
+            else:
+                return {}
+        p_now = self.instant_price(datetime.now(TZ))
+        p_fut = self.instant_price(datetime.now(TZ) + timedelta(hours=12))
+        slot = self.current_ranking()
+        return {'price': p_now, 'slot': slot, 'future_price': p_fut}
 
     def current_price(self):
         return self.instant_price(datetime.now(TZ))
@@ -95,7 +104,6 @@ class PriceList:
     def instant_price(self, now):
         """Filter out current hourly price from price list"""
         today = self.prices[self.prices.index.day == now.day]
-        print(self.prices.index[0], self.prices.index[-1])
         price = today[today.index.hour == now.hour].values[0]
         try:
             float(price)
@@ -145,44 +153,8 @@ class Entsoe:
 
 
 class entsoe_price_list(PriceList):
+    ok = ENTSOE_OK
+
     def __init__(self, conf: dict):
         cache_file = conf['0']['cache']
         super().__init__(cache_file, Entsoe())
-
-
-class mqtt_spot_price(mqtt_publisher):
-
-    def __init__(self, conf: config, name: str):
-        super().__init__(conf)
-        self.read(name)
-        sensor_class = globals()[self.type_name]
-        self.price_list = sensor_class(self.type_conf)
-
-    def action(self):
-        try:
-            self.price_list.update()
-        except Exception as e:
-            log(e)
-            log('mqtt_spot_price: Failed to update price list.'
-                f'Sleeping for {self.exception_delay/60} minutes.')
-            self.client.pub('available', 'offline')
-            return False
-        if not self.price_list.prices.empty:
-            p_now = self.price_list.current_price()
-            p_fut = self.price_list.instant_price(datetime.now(TZ)
-                                                  + timedelta(hours=12))
-            message = {'price': p_now,
-                       'slot': self.price_list.current_ranking(),
-                       'future_price': p_fut}
-            self.pub('pub', json.dumps(message))
-            self.pub('available', 'online')
-            log(str(message))
-            return True
-        else:
-            return False
-
-
-def test():
-    CONFIG = config(open('config/sensors.json'))
-    worker = mqtt_spot_price(CONFIG, 'entsoe')
-    worker.run()
