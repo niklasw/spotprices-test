@@ -32,6 +32,49 @@ class temperature_sensors:
         return json.dumps(self.get_temperatures())
 
 
+class http_parsers:
+
+    def select(self, url):
+        if 'smhi' in url:
+            return self.smhi
+        if 'minglarn' in url:
+            return self.minglarn
+
+    @staticmethod
+    def minglarn(json_dict):
+        for tname in ('temperature', 'temp', 'temp:'):
+            if tname in json_dict:
+                return json_dict[tname]
+
+    @staticmethod
+    def smhi_sort(json_dict):
+        def sort_key(x):
+            try:
+                return int(x.get('date'))
+            except ValueError:
+                log(f'http_parsers.smhi failed to parse one item {x}')
+                return 0
+
+        if values := json_dict.get('value'):
+            if isinstance(values, list) and len(values):
+                sample = sorted(values, key=sort_key)[-1]
+                try:
+                    return float(sample['value'])
+                except ValueError:
+                    log(f'http_parsers.smhi failed to parse one item {sample}')
+                    return None
+
+    @staticmethod
+    def smhi(json_dict):
+        if values := json_dict.get('value'):
+            if isinstance(values, list) and len(values):
+                sample = values[-1]
+                try:
+                    return float(sample['value'])
+                except ValueError:
+                    log(f'http_parsers.smhi failed to parse one item {sample}')
+
+
 class http_sensors(temperature_sensors):
 
     def __init__(self, conf: dict):
@@ -59,7 +102,8 @@ class http_sensors(temperature_sensors):
                     log(f'http_sensors error for sensor {name}'
                         f'from {url}. {e}')
                     continue
-                temp = self.parser(json_response)
+                parser = http_parsers().select(url)
+                temp = parser(json_response)
                 if temp:
                     result[name] = temp
             else:
