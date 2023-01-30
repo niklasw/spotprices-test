@@ -23,8 +23,9 @@ class mqtt_sensor(mqtt_publisher):
     def action(self):
         try:
             result = self.sensor.update()
-        except Exception:
+        except Exception as e:
             result = {}
+            log(e)
             log('Exception in mqtt_sensor action')
         if result:
             self.pub('available', 'online')

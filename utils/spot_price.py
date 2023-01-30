@@ -94,7 +94,10 @@ class PriceList:
             else:
                 return {}
         p_now = self.instant_price(datetime.now(TZ))
-        p_fut = self.instant_price(datetime.now(TZ) + timedelta(hours=12))
+        try:
+            p_fut = self.instant_price(datetime.now(TZ) + timedelta(hours=12))
+        except:
+            p_fut = self.default_price
         slot = self.current_ranking()
         return {'price': p_now, 'slot': slot, 'future_price': p_fut}
 
@@ -109,6 +112,7 @@ class PriceList:
             float(price)
             return price
         except ValueError:
+            log(f'ValueError {price}')
             return self.default_price
 
     def todays_sorted(self):
