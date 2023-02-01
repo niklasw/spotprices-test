@@ -99,7 +99,7 @@ class http_sensors(temperature_sensors):
                 try:
                     json_response = r.json()
                 except Exception as e:
-                    log(f'http_sensors error for sensor {name}'
+                    log(f'http_sensors exception for sensor {name}'
                         f'from {url}. {e}')
                     continue
                 parser = http_parsers().select(url)
