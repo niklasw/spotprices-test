@@ -101,6 +101,7 @@ class mqtt_publisher(hass_client):
                 if self.action():
                     time.sleep(self.execution_delay)
                 else:
+                    log('mqtt_publisher.action returned nothing')
                     self.offline()
                     time.sleep(self.exception_delay)
             except (KeyboardInterrupt, SystemExit):

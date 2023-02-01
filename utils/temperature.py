@@ -106,6 +106,8 @@ class http_sensors(temperature_sensors):
                 temp = parser(json_response)
                 if temp:
                     result[name] = temp
+                else:
+                    log(f'http_sensors parser returned nothing')
             else:
                 log(f'http_sensors: Request error from {url} '
                     f'with status {r.status_code}')
