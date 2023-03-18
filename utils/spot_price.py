@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-from . import log
+from . import log, file_age
+from .sensors import general_sensors
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
 from pathlib import Path
+
 try:
     import pandas as pd
     from entsoe import EntsoeRawClient, parsers
@@ -26,25 +28,53 @@ class MyEntsoeException(Exception):
         super().__init__(message=message)
 
 
+class energy_price_sensors(general_sensors):
+
+    def __init__(self, conf: dict):
+        super.__init__(conf)
+
+    def get_values(self):
+        return self.get_prices()
+
+
+class TransferPrice:
+
+    def __init__(self, conf_dict):
+        """ dict must contain 'transfer_cost' with value being a list
+        of pairs [[hour, price], [hour, price],...]"""
+        self.tariff = conf_dict.get('transfer_cost')
+        assert isinstance(self.tariff, list)
+        self.currency = 'SEK'
+
+    def get_price(self, now: datetime):
+        if not self.tariff:
+            return 0
+        for p_h in reversed(self.tariff):
+            h, p = p_h
+            if now.hour >= h:
+                return p
+        return self.tariff[-1][1]
+
+    def current_price(self):
+        return self.get_price(datetime.now(TZ))
+
+
 class PriceList:
     cache_timeout_s = 8 * 3600
     default_price = 1000
     max_usage_hours = 24
 
-    def __init__(self, cache_file, service):
-        self.cache: Path = Path(cache_file)
+    def __init__(self, conf, service):
+        self.cache: Path = Path(conf.get('cache'))
         self.service = service
         self.query_result = None
         self.prices: pd.TimeSeries = None
         self.last_updated = datetime.now(TZ) - timedelta(days=1)
         self.update_interval = timedelta(hours=4)
+        self.tariff: TransferPrice = TransferPrice(conf)
 
     def cache_age(self):
-        if self.cache.exists():
-            st_mtime = self.cache.stat().st_mtime
-        else:
-            st_mtime = 0
-        return datetime.now(TZ) - datetime.fromtimestamp(st_mtime, TZ)
+        return file_age(self.cache)
 
     def cache_write(self):
         if self.prices is not None:
@@ -58,7 +88,7 @@ class PriceList:
             return None
         return p.tz_convert(TIME_ZONE)
 
-    def get_prices(self):
+    def fetch_prices(self):
         log('Updating price list')
         use_cache = self.cache_age().total_seconds() < self.cache_timeout_s
         new_prices = None
@@ -68,9 +98,9 @@ class PriceList:
         else:
             log('fetching price list')
             try:
-                new_prices = self.service.get_prices()
+                new_prices = self.service.fetch_prices()
             except MyEntsoeException as e:
-                log(f'get_prices failed with {e}')
+                log(f'fetch_prices failed with {e}')
         if new_prices is not None:
             self.prices = new_prices
             if not use_cache:
@@ -87,18 +117,21 @@ class PriceList:
                     return g[1]
         return [g[1] for g in groups]
 
-    def update(self):
-        if (datetime.now(TZ) - self.last_updated) > self.update_interval:
-            if self.get_prices():
-                self.last_updated = datetime.now(TZ)
+    def get_prices(self):
+        now = datetime.now(TZ)
+        if (now - self.last_updated) > self.update_interval:
+            if self.fetch_prices():
+                self.last_updated = now
             else:
                 return {}
-        p_now = self.instant_price(datetime.now(TZ))
+        p_now = self.instant_price(now)
         try:
-            p_fut = self.instant_price(datetime.now(TZ) + timedelta(hours=12))
-        except:
+            p_fut = self.instant_price(now + timedelta(hours=12))
+        except Exception:
             p_fut = self.default_price
         slot = self.current_ranking()
+        if self.tariff:
+            p_now += self.tariff.current_price()
         return {'price': p_now, 'slot': slot, 'future_price': p_fut}
 
     def current_price(self):
@@ -145,7 +178,7 @@ class Entsoe:
             raise MyEntsoeException
         return query
 
-    def get_prices(self):
+    def fetch_prices(self):
         """The price list seems to be given in Greenwich time zone,
            so must convert index to time zone."""
         query_result = self.fetch()
@@ -160,5 +193,7 @@ class entsoe_price_list(PriceList):
     ok = ENTSOE_OK
 
     def __init__(self, conf: dict):
-        cache_file = conf['0']['cache']
-        super().__init__(cache_file, Entsoe())
+        super().__init__(conf, Entsoe())
+
+    def update(self):
+        return self.get_prices()

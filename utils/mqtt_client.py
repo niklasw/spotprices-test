@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 
 from . import log, config
+from .temperature import http_sensors, w1_sensors
+from .currency import currency_sensor
+from .spot_price import entsoe_price_list
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
 import sys
 import time
+import json
 
 
 @dataclass
@@ -82,7 +86,7 @@ class mqtt_publisher(hass_client):
     def read(self, name: str):
         conf = self.conf.sources[name]
         self.type_name = conf['type']
-        self.type_conf = conf['sensors']
+        self.type_conf = conf[self.type_name]
         self.topics['pub'] = hass_topic(topic=conf['topic'])
         self.topics['available'] = hass_topic(topic=conf['available'])
         self.execution_delay = \
@@ -112,3 +116,36 @@ class mqtt_publisher(hass_client):
 
     def offline(self):
         self.pub('available', 'offline')
+
+
+class mqtt_sensor(mqtt_publisher):
+    """This instantiates a sensor, e.g. http_sensor, w1_sensor, entsoe...
+    so must have access to those classes.
+    """
+
+    def __init__(self, conf: config, name: str):
+        super().__init__(conf)
+        self.name = name
+        self.read(name)
+        sensor_class = globals()[self.type_name]
+        self.sensor = sensor_class(self.type_conf)
+
+    def sensor_ok(self):
+        return self.sensor.ok
+
+    def action(self):
+        try:
+            result = self.sensor.update()
+        except Exception as e:
+            result = {}
+            log(e)
+            log('Exception in mqtt_sensor action')
+        if result:
+            self.pub('available', 'online')
+            self.pub('pub', json.dumps(result))
+            log(json.dumps(result))
+            return True
+        else:
+            self.pub('available', 'offline')
+            log(f'{self.name} sensor offline')
+            return False

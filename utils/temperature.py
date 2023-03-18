@@ -1,7 +1,6 @@
 
 from . import log
-import requests
-import json
+from .sensors import general_sensors, http_parsers
 
 try:
     from w1thermsensor import W1ThermSensor
@@ -16,63 +15,18 @@ class MyTemperatureException(Exception):
         super().__init__(message=message)
 
 
-class temperature_sensors:
+class temperature_sensors(general_sensors):
     ok = True
 
     def __init__(self, conf: dict):
-        self.device_map = conf
+        super().__init__(conf)
 
-    def update(self):
+    def get_values(self):
         return self.get_temperatures()
 
     def get_temperatures(self):
+        """Must be imlemented by subclass"""
         return {}
-
-    def json(self):
-        return json.dumps(self.get_temperatures())
-
-
-class http_parsers:
-
-    def select(self, url):
-        if 'smhi' in url:
-            return self.smhi
-        if 'minglarn' in url:
-            return self.minglarn
-
-    @staticmethod
-    def minglarn(json_dict):
-        for tname in ('temperature', 'temp', 'temp:'):
-            if tname in json_dict:
-                return json_dict[tname]
-
-    @staticmethod
-    def smhi_sort(json_dict):
-        def sort_key(x):
-            try:
-                return int(x.get('date'))
-            except ValueError:
-                log(f'http_parsers.smhi failed to parse one item {x}')
-                return 0
-
-        if values := json_dict.get('value'):
-            if isinstance(values, list) and len(values):
-                sample = sorted(values, key=sort_key)[-1]
-                try:
-                    return float(sample['value'])
-                except ValueError:
-                    log(f'http_parsers.smhi failed to parse one item {sample}')
-                    return None
-
-    @staticmethod
-    def smhi(json_dict):
-        if values := json_dict.get('value'):
-            if isinstance(values, list) and len(values):
-                sample = values[-1]
-                try:
-                    return float(sample['value'])
-                except ValueError:
-                    log(f'http_parsers.smhi failed to parse one item {sample}')
 
 
 class http_sensors(temperature_sensors):
@@ -89,28 +43,9 @@ class http_sensors(temperature_sensors):
     def get_temperatures(self):
         result = {}
         for url, name in self.device_map.items():
-            try:
-                r = requests.get(url)
-            except Exception:
-                log(f'http_sensors requests exception for sensor {name}')
-                log(f'with url = {url}')
-                continue
-            if r.status_code == 200:
-                try:
-                    json_response = r.json()
-                except Exception as e:
-                    log(f'http_sensors exception for sensor {name}'
-                        f'from {url}. {e}')
-                    continue
-                parser = http_parsers().select(url)
-                temp = parser(json_response)
-                if temp:
-                    result[name] = temp
-                else:
-                    log(f'http_sensors parser returned nothing')
-            else:
-                log(f'http_sensors: Request error from {url} '
-                    f'with status {r.status_code}')
+            http_tool = http_parsers(url, name)
+            if value := http_tool.get_data():
+                result[name] = value
         return result
 
 
