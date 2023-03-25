@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from . import log, file_age
-from .sensors import general_sensors
+# from .sensors import general_sensors
 import os
 from datetime import datetime, timedelta
 from dateutil import tz
@@ -28,13 +28,13 @@ class MyEntsoeException(Exception):
         super().__init__(message=message)
 
 
-class energy_price_sensors(general_sensors):
-
-    def __init__(self, conf: dict):
-        super.__init__(conf)
-
-    def get_values(self):
-        return self.get_prices()
+# class energy_price_sensors(general_sensors):
+#
+#     def __init__(self, conf: dict):
+#         super.__init__(conf)
+#
+#     def get_values(self):
+#         return self.get_prices()
 
 
 class TransferPrice:
@@ -63,22 +63,29 @@ class PriceList:
     cache_timeout_s = 8 * 3600
     default_price = 1000
     max_usage_hours = 24
+    currency_xrate = 12  # Initial guess, since might not yet be published
 
     def __init__(self, conf, service):
         self.cache: Path = Path(conf.get('cache'))
         self.service = service
         self.query_result = None
-        self.prices: pd.TimeSeries = None
+        self.prices = None  # pandas series
         self.last_updated = datetime.now(TZ) - timedelta(days=1)
-        self.update_interval = timedelta(hours=4)
+        self.update_interval = timedelta(seconds=4)
         self.tariff: TransferPrice = TransferPrice(conf)
+
+    def change_currency(self, price_series):
+        log(f'changing {self.currency_xrate}')
+        if self.currency_xrate and self.currency_xrate > 0:
+            price_series *= self.currency_xrate/1000
+        return price_series
 
     def cache_age(self):
         return file_age(self.cache)
 
-    def cache_write(self):
-        if self.prices is not None:
-            self.prices.to_json(self.cache)
+    def cache_write(self, prices):
+        if prices is not None:
+            prices.to_json(self.cache)
 
     def cache_read(self):
         try:
@@ -101,10 +108,9 @@ class PriceList:
                 new_prices = self.service.fetch_prices()
             except MyEntsoeException as e:
                 log(f'fetch_prices failed with {e}')
+            self.cache_write(new_prices)
         if new_prices is not None:
-            self.prices = new_prices
-            if not use_cache:
-                self.cache_write()
+            self.prices = self.change_currency(new_prices)
             return True
 
     def get_daily_prices(self, today=False):
@@ -126,16 +132,13 @@ class PriceList:
                 return {}
         p_now = self.instant_price(now)
         try:
-            p_fut = self.instant_price(now + timedelta(hours=12))
+            p_fut = self.instant_price(now + timedelta(hours=3))
         except Exception:
             p_fut = self.default_price
         slot = self.current_ranking()
         if self.tariff:
             p_now += self.tariff.current_price()
         return {'price': p_now, 'slot': slot, 'future_price': p_fut}
-
-    def current_price(self):
-        return self.instant_price(datetime.now(TZ))
 
     def instant_price(self, now):
         """Filter out current hourly price from price list"""
@@ -194,6 +197,10 @@ class entsoe_price_list(PriceList):
 
     def __init__(self, conf: dict):
         super().__init__(conf, Entsoe())
+        self.subscription_topic = conf.get('subscription')
+        self.shared_data = None
 
     def update(self):
+        if isinstance(self.shared_data, dict):
+            self.currency_xrate = self.shared_data.get('eur_to_sek')
         return self.get_prices()

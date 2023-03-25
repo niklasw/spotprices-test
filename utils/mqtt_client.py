@@ -38,6 +38,8 @@ class hass_client(mqtt.Client):
                              'available': hass_topic(topic='$SYS/available'),
                              'pub': None}
         self.QoS: int = 1
+        self.shared_data: dict = {}
+        self.subscription_topic = None
 
     def connect(self):
         try:
@@ -55,7 +57,11 @@ class hass_client(mqtt.Client):
         log(f'Disconnecting. Result code {str(rc)}')
 
     def on_message(self, client, userdata, msg):
-        log(f'Got message regarding {msg.topic} - {msg.payload}')
+        try:
+            self.shared_data = json.loads(msg.payload)
+            log(f'Client received {self.shared_data}')
+        except (ValueError, TypeError):
+            log(f'Got unparseable message on {msg.topic} - {msg.payload}')
 
     def pub(self, topic_name, payload):
         topic = self.topics[topic_name]
@@ -63,6 +69,13 @@ class hass_client(mqtt.Client):
                      payload=payload,
                      qos=topic.qos,
                      retain=topic.retain)
+
+    def sub(self):
+        """In order to communicate data btw threads, self can subscribe
+        to a topic defined by e.g. a sensor, see mqtt_sensor below"""
+        log(f'Client subscribing to {self.subscription_topic}')
+        if self.subscription_topic:
+            self.subscribe(self.subscription_topic)
 
     def disconnect(self):
         self.pub('available', 'offline')
@@ -100,6 +113,7 @@ class mqtt_publisher(hass_client):
     def run(self):
         self.connect()
         self.loop_start()
+        self.sub()
         while True:
             try:
                 if self.action():
@@ -120,20 +134,28 @@ class mqtt_publisher(hass_client):
 
 class mqtt_sensor(mqtt_publisher):
     """This instantiates a sensor, e.g. http_sensor, w1_sensor, entsoe...
-    so must have access to those classes.
+    at runtime, from string name, so must have access to those classes.
     """
 
     def __init__(self, conf: config, name: str):
         super().__init__(conf)
         self.name = name
         self.read(name)
+        # Runtime sensor selection
         sensor_class = globals()[self.type_name]
         self.sensor = sensor_class(self.type_conf)
+
+        # Need to be able to share client subcription data with sensor
+        # So, sensor can be configured with a "subscription": "topic"
+        # to which this client then subscribes. In action() below,
+        # self shares the received data with the sensor.
+        self.subscription_topic = self.sensor.subscription_topic
 
     def sensor_ok(self):
         return self.sensor.ok
 
     def action(self):
+        self.sensor.shared_data = self.shared_data
         try:
             result = self.sensor.update()
         except Exception as e:

@@ -16,7 +16,6 @@ class currency_sensor(general_sensors):
         self.api_key = os.getenv('EXCHANGE_RATES_API_KEY')
         if self.api_key:
             self.ok = True
-        print(self.api_key)
 
     def cache_read(self):
         with self.cache.open() as fp:
@@ -27,24 +26,27 @@ class currency_sensor(general_sensors):
 
     def cache_write(self, data: json):
         with self.cache.open('w') as fp:
-            json.dump(fp, data)
+            json.dump(data, fp)
 
     def get_x_rate(self):
         result = {}
         for url, name in self.device_map.items():
+            log(f'Updating currency for {name}')
             http_tool = http_parsers(url, name)
             http_tool.headers = {'apikey': self.api_key}
             use_cache = file_age(self.cache).total_seconds() \
                 < self.cache_timeout_s
             if use_cache:
+                log(f'\treading currency from cache for {name}')
                 json_data = self.cache_read()
             else:
+                log(f'\tfetching currency for {name}')
                 if json_data := http_tool.fetch_json():
                     self.cache_write(json_data)
             parser = http_tool.select()
             parsed = parser(json_data)
             if parsed:
-                result = parsed
+                result[name] = parsed
             else:
                 log(f'curency_sensor returned nothing from {name}')
         return result

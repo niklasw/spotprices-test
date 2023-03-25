@@ -10,6 +10,7 @@ class general_sensors:
 
     def __init__(self, conf: dict):
         self.device_map = conf.get('devices') or {}
+        self.subscription_topic = conf.get('subscription')
 
     def update(self):
         return self.get_values()
@@ -29,7 +30,7 @@ class http_parsers:
         self.name = name
         self.headers = None
 
-    def fetch_json(self):
+    def fetch_json(self) -> dict:
         json_response = {}
         try:
             r = requests.get(self.url, headers=self.headers)
