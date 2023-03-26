@@ -75,9 +75,10 @@ class PriceList:
         self.tariff: TransferPrice = TransferPrice(conf)
 
     def change_currency(self, price_series):
-        log(f'changing {self.currency_xrate}')
+        log(f'Currency exchange rate {self.currency_xrate}')
         if self.currency_xrate and self.currency_xrate > 0:
-            price_series *= self.currency_xrate/1000
+            # MW -> kW and sek*100 (ore)
+            price_series *= self.currency_xrate/10
         return price_series
 
     def cache_age(self):
@@ -125,6 +126,7 @@ class PriceList:
 
     def get_prices(self):
         now = datetime.now(TZ)
+        future = now + timedelta(hours=3)
         if (now - self.last_updated) > self.update_interval:
             if self.fetch_prices():
                 self.last_updated = now
@@ -132,12 +134,17 @@ class PriceList:
                 return {}
         p_now = self.instant_price(now)
         try:
-            p_fut = self.instant_price(now + timedelta(hours=3))
+            p_fut = self.instant_price(future)
         except Exception:
             p_fut = self.default_price
         slot = self.current_ranking()
         if self.tariff:
-            p_now += self.tariff.current_price()
+            log('PriceList current transfer tariff '
+                f'{self.tariff.get_price(now)} öre')
+            p_now += self.tariff.get_price(now)
+            p_fut += self.tariff.get_price(future)
+        p_now = round(p_now, 2)
+        p_fut = round(p_fut, 2)
         return {'price': p_now, 'slot': slot, 'future_price': p_fut}
 
     def instant_price(self, now):
@@ -201,6 +208,10 @@ class entsoe_price_list(PriceList):
         self.shared_data = None
 
     def update(self):
-        if isinstance(self.shared_data, dict):
-            self.currency_xrate = self.shared_data.get('eur_to_sek')
+        try:
+            xrate = float(self.shared_data.get('eur_to_sek'))
+        except Exception:
+            xrate = self.currency_xrate
+            log(f'entsoe_price_list using default currency rate {xrate}')
+        self.currency_xrate = xrate
         return self.get_prices()

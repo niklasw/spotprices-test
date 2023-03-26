@@ -16,6 +16,8 @@ class currency_sensor(general_sensors):
         self.api_key = os.getenv('EXCHANGE_RATES_API_KEY')
         if self.api_key:
             self.ok = True
+        else:
+            log('Missing API key variable for currency_sensor')
 
     def cache_read(self):
         with self.cache.open() as fp:
@@ -43,6 +45,9 @@ class currency_sensor(general_sensors):
                 log(f'\tfetching currency for {name}')
                 if json_data := http_tool.fetch_json():
                     self.cache_write(json_data)
+                else:
+                    log(f'\tFAILED fetching currency for {name}')
+                    json_data = self.cache_read()
             parser = http_tool.select()
             parsed = parser(json_data)
             if parsed:
