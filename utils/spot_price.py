@@ -46,14 +46,16 @@ class TransferPrice:
         assert isinstance(self.tariff, list)
         self.currency = 'SEK'
 
-    def get_price(self, now: datetime):
-        if not self.tariff:
-            return 0
-        for p_h in reversed(self.tariff):
-            h, p = p_h
-            if now.hour >= h:
-                return p
-        return self.tariff[-1][1]
+    def get(self, now: datetime):
+        morning, high = self.tariff[0]
+        evening, low = self.tariff[1]
+        print(low, high, now.weekday())
+        if now.weekday() in range(5, 7):
+            return low
+        elif now.hour >= morning and now.hour < evening:
+            return high
+        else:
+            return low
 
     def current_price(self):
         return self.get_price(datetime.now(TZ))
@@ -140,9 +142,9 @@ class PriceList:
         slot = self.current_ranking()
         if self.tariff:
             log('PriceList current transfer tariff '
-                f'{self.tariff.get_price(now)} öre')
-            p_now += self.tariff.get_price(now)
-            p_fut += self.tariff.get_price(future)
+                f'{self.tariff.get(now)} öre')
+            p_now += self.tariff.get(now)
+            p_fut += self.tariff.get(future)
         p_now = round(p_now, 2)
         p_fut = round(p_fut, 2)
         return {'price': p_now, 'slot': slot, 'future_price': p_fut}
