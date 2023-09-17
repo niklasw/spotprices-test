@@ -41,8 +41,10 @@ class TransferPrice:
 
     def __init__(self, conf_dict):
         """ dict must contain 'transfer_cost' with value being a list
-        of pairs [[hour, price], [hour, price],...]"""
-        self.tariff = conf_dict.get('transfer_cost')
+        of pairs [[hour, price], [hour, price],...]
+        Also adding energy_tax and bundle with transfer."""
+        self.tariff = conf_dict.get('transfer_cost', 0)
+        self.tax = conf_dict.get('energy_tax', 0)
         assert isinstance(self.tariff, list)
         self.currency = 'SEK'
 
@@ -50,15 +52,17 @@ class TransferPrice:
         morning, high = self.tariff[0]
         evening, low = self.tariff[1]
         print(low, high, now.weekday())
-        if now.weekday() in range(5, 7):
-            return low
-        elif now.hour >= morning and now.hour < evening:
-            return high
+        if now.month in range(4, 11):
+            return low + self.tax
+        elif now.weekday() in range(5, 7):
+            return low + self.tax
+        elif now.hour < morning and now.hour >= evening:
+            return low + self.tax
         else:
-            return low
+            return high + self.tax
 
     def current_price(self):
-        return self.get_price(datetime.now(TZ))
+        return self.get(datetime.now(TZ))
 
 
 class PriceList:
@@ -128,7 +132,7 @@ class PriceList:
 
     def get_prices(self):
         now = datetime.now(TZ)
-        future = now + timedelta(hours=3)
+        future = now + timedelta(hours=2)
         if (now - self.last_updated) > self.update_interval:
             if self.fetch_prices():
                 self.last_updated = now
@@ -152,12 +156,15 @@ class PriceList:
     def instant_price(self, now):
         """Filter out current hourly price from price list"""
         today = self.prices[self.prices.index.day == now.day]
-        price = today[today.index.hour == now.hour].values[0]
+        if today.size > 0:
+            price = today[today.index.hour == now.hour].values[0]
+        else:
+            price = 'Price not found in time range'
         try:
             float(price)
             return price
-        except ValueError:
-            log(f'ValueError {price}')
+        except ValueError as e:
+            log(f'ValueError ({e})')
             return self.default_price
 
     def todays_sorted(self):
