@@ -11,12 +11,12 @@
             "available": "homeassistant/temperature/w1_1/available",
             "update_period": 60,
             "w1_sensors": {
-            	"devices": {
-            	     "3c01b607b5a1": "pool_pipes",
-            	     "3c01b607ee7e": "pool_water",
-            	     "0120358fb53e": "house_hall"
-            	}
-	    }
+                "devices": {
+                     "3c01b607b5a1": "pool_pipes",
+                     "3c01b607ee7e": "pool_water",
+                     "0120358fb53e": "house_hall"
+                }
+            }
         },
         "http": {
             "type": "http_sensors",
@@ -28,9 +28,10 @@
                     "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/97100/period/latest-day/data.json": "smhi"
                 }
 
+            }
         },
        "entsoe": {
-	    "disable": true,
+            "disable": true,
             "type": "entsoe_price_list",
             "topic": "homeassistant/energy/price/info",
             "available": "homeassistant/energy/price/available",
@@ -40,9 +41,9 @@
                     "cache": "prices.json"
                 }
             }
-        }
-	"spotprice":{
-	    "disable": false,
+        },
+        "spotprice":{
+            "disable": false,
             "type": "elprisetjustnu_price_list",
             "topic": "homeassistant/energy/price/info",
             "available": "homeassistant/energy/price/available",
@@ -50,7 +51,7 @@
             "elprisetjustnu_price_list": {
                 "cache": "db/elpprices.json",
                 "transfer_cost": [[6, 67], [22, 16]],
-		"energy_tax": 42.8
+                "energy_tax": 42.8
             }
         },
         "currency": {
@@ -65,6 +66,5 @@
                  }
             }
         }
-
     }
 }
