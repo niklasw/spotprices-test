@@ -3,7 +3,7 @@
 from . import log, config
 from .temperature import http_sensors, w1_sensors
 from .currency import currency_sensor
-from .spot_price import entsoe_price_list
+from .spot_price import entsoe_price_list, elprisetjustnu_price_list
 import paho.mqtt.client as mqtt
 from dataclasses import dataclass
 import sys
@@ -58,6 +58,7 @@ class hass_client(mqtt.Client):
 
     def on_message(self, client, userdata, msg):
         try:
+            log(f'XXX Client waiting for payload')
             self.shared_data = json.loads(msg.payload)
             log(f'Client received {self.shared_data}')
         except (ValueError, TypeError):
@@ -73,8 +74,8 @@ class hass_client(mqtt.Client):
     def sub(self):
         """In order to communicate data btw threads, self can subscribe
         to a topic defined by e.g. a sensor, see mqtt_sensor below"""
-        log(f'Client subscribing to {self.subscription_topic}')
         if self.subscription_topic:
+            log(f'Client subscribing to {self.subscription_topic}')
             self.subscribe(self.subscription_topic)
 
     def disconnect(self):
@@ -99,6 +100,7 @@ class mqtt_publisher(hass_client):
     def read(self, name: str):
         conf = self.conf.sources[name]
         self.type_name = conf['type']
+        self.disabled = conf.get('disable')
         self.type_conf = conf[self.type_name]
         self.topics['pub'] = hass_topic(topic=conf['topic'])
         self.topics['available'] = hass_topic(topic=conf['available'])
@@ -133,7 +135,10 @@ class mqtt_publisher(hass_client):
 
 
 class mqtt_sensor(mqtt_publisher):
-    """This instantiates a sensor, e.g. http_sensor, w1_sensor, entsoe...
+    """
+    this is the top level object, to be instantiated in main, one for
+    each item in the sensor config file.
+    It instantiates a sensor, e.g. http_sensor, w1_sensor, entsoe...
     at runtime, from string name, so must have access to those classes.
     """
 
@@ -161,7 +166,7 @@ class mqtt_sensor(mqtt_publisher):
         except Exception as e:
             result = {}
             log(e)
-            log('Exception in mqtt_sensor action')
+            log(f'Exception in mqtt_sensor action for {self.type_name}')
         if result:
             self.pub('available', 'online')
             self.pub('pub', json.dumps(result))

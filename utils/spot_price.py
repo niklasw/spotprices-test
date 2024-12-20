@@ -6,6 +6,14 @@ import os
 from datetime import datetime, timedelta
 from dateutil import tz
 from pathlib import Path
+from .price_providers import Elprisetjustnu
+
+try:
+    import pandas as pd
+    ELPRISERJUSTNU_OK = True
+except Exception as e:
+    ELPRISERJUSTNU_OK = False
+    log(e)
 
 try:
     import pandas as pd
@@ -23,9 +31,9 @@ def day_start(time: datetime):
     return datetime(time.year, time.month, time.day, 0, 0, 0, 0, TZ)
 
 
-class MyEntsoeException(Exception):
-    def __init__(self, message='Entsoe exception raised'):
-        super().__init__(message=message)
+class PriceListException(Exception):
+    def __init__(self, message='PriceList exception raised'):
+        super().__init__(message)
 
 
 # class energy_price_sensors(general_sensors):
@@ -44,22 +52,23 @@ class TransferPrice:
         of pairs [[hour, price], [hour, price],...]
         Also adding energy_tax and bundle with transfer."""
         self.tariff = conf_dict.get('transfer_cost', 0)
+        self.spot_add = 7
         self.tax = conf_dict.get('energy_tax', 0)
         assert isinstance(self.tariff, list)
-        self.currency = 'SEK'
+        self.currency = 'SEK/100'
+        print(conf_dict, flush=True)
 
     def get(self, now: datetime):
         morning, high = self.tariff[0]
         evening, low = self.tariff[1]
-        print(low, high, now.weekday())
         if now.month in range(4, 11):
-            return low + self.tax
+            return low + self.tax + self.spot_add
         elif now.weekday() in range(5, 7):
-            return low + self.tax
+            return low + self.tax + self.spot_add
         elif now.hour < morning and now.hour >= evening:
-            return low + self.tax
+            return low + self.tax + self.spot_add
         else:
-            return high + self.tax
+            return high + self.tax + self.spot_add
 
     def current_price(self):
         return self.get(datetime.now(TZ))
@@ -110,10 +119,10 @@ class PriceList:
             log('reading price list')
             new_prices = self.cache_read()
         else:
-            log('fetching price list')
+            log(f'fetching price list using {self.service}')
             try:
                 new_prices = self.service.fetch_prices()
-            except MyEntsoeException as e:
+            except Exception as e:
                 log(f'fetch_prices failed with {e}')
             self.cache_write(new_prices)
         if new_prices is not None:
@@ -139,13 +148,14 @@ class PriceList:
             else:
                 return {}
         p_now = self.instant_price(now)
+        log(f'Current get_prices (raw) {p_now}')
         try:
             p_fut = self.instant_price(future)
         except Exception:
             p_fut = self.default_price
         slot = self.current_ranking()
         if self.tariff:
-            log('PriceList current transfer tariff '
+            log('PriceList current transfer tariff plus tax '
                 f'{self.tariff.get(now)} öre')
             p_now += self.tariff.get(now)
             p_fut += self.tariff.get(future)
@@ -193,8 +203,9 @@ class Entsoe:
         try:
             query = \
                 self.client.query_day_ahead_prices(country_code, start, end)
-        except Exception:
-            raise MyEntsoeException
+        except Exception as e:
+            log(f'Exception:\n{e}')
+            raise PriceListException
         return query
 
     def fetch_prices(self):
@@ -224,3 +235,17 @@ class entsoe_price_list(PriceList):
             log(f'entsoe_price_list using default currency rate {xrate}')
         self.currency_xrate = xrate
         return self.get_prices()
+
+
+class elprisetjustnu_price_list(PriceList):
+    ok = ELPRISERJUSTNU_OK
+
+    def __init__(self, conf: dict):
+        super().__init__(conf, Elprisetjustnu())
+        self.shared_data = None
+        self.subscription_topic = None
+
+    def update(self):
+        return self.get_prices()
+
+

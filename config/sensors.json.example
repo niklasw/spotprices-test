@@ -10,22 +10,27 @@
             "topic": "homeassistant/temperature/w1_1",
             "available": "homeassistant/temperature/w1_1/available",
             "update_period": 60,
-            "sensors": {
-                 "3c01b607b5a1": "pool_pipes",
-                 "3c01b607ee7e": "pool_water",
-                 "0120358fb53e": "house_hall"
-            }
+            "w1_sensors": {
+            	"devices": {
+            	     "3c01b607b5a1": "pool_pipes",
+            	     "3c01b607ee7e": "pool_water",
+            	     "0120358fb53e": "house_hall"
+            	}
+	    }
         },
         "http": {
             "type": "http_sensors",
             "topic": "homeassistant/temperature/http_1",
             "available": "homeassistant/temperature/http_1/available",
             "update_period": 300,
-            "sensors": {
-                 "https://minglarn.se/ha_sensor.php": "minglarn_weather"
-            }
+            "http_sensors": {
+                "devices": {
+                    "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/97100/period/latest-day/data.json": "smhi"
+                }
+
         },
        "entsoe": {
+	    "disable": true,
             "type": "entsoe_price_list",
             "topic": "homeassistant/energy/price/info",
             "available": "homeassistant/energy/price/available",
@@ -36,5 +41,30 @@
                 }
             }
         }
+	"spotprice":{
+	    "disable": false,
+            "type": "elprisetjustnu_price_list",
+            "topic": "homeassistant/energy/price/info",
+            "available": "homeassistant/energy/price/available",
+            "update_period": 60,
+            "elprisetjustnu_price_list": {
+                "cache": "db/elpprices.json",
+                "transfer_cost": [[6, 67], [22, 16]],
+		"energy_tax": 42.8
+            }
+        },
+        "currency": {
+            "type": "currency_sensor",
+            "topic": "homeassistant/currency/xrate",
+            "available": "homeassistant/currency/xrate/available",
+            "update_period": 43200,
+            "currency_sensor": {
+                 "cache": "db/exchange_rate.json",
+                 "devices": {
+                    "https://api.apilayer.com/exchangerates_data/latest?base=EUR&symbols=SEK": "eur_to_sek"
+                 }
+            }
+        }
+
     }
 }

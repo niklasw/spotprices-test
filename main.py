@@ -20,7 +20,7 @@ def run_sensors():
         conf = config(cf)
         for name in conf.sources:
             actor = mqtt_sensor(conf, name)
-            if actor.sensor_ok():
+            if not actor.disabled and actor.sensor_ok():
                 thread = Thread(target=actor.run,
                                 daemon=True,
                                 name=f'{name}_thread')
