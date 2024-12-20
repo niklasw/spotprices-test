@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from . import log, file_age
+from . import log, err, file_age
 # from .sensors import general_sensors
 import os
 from datetime import datetime, timedelta
@@ -52,23 +52,26 @@ class TransferPrice:
         of pairs [[hour, price], [hour, price],...]
         Also adding energy_tax and bundle with transfer."""
         self.tariff = conf_dict.get('transfer_cost', 0)
-        self.spot_add = 7
+        self.spot_add = conf_dict.get('spot_addition', 7) 
         self.tax = conf_dict.get('energy_tax', 0)
         assert isinstance(self.tariff, list)
         self.currency = 'SEK/100'
-        print(conf_dict, flush=True)
+        log(conf_dict)
+
+    def energy_tax(self):
+        return self.tax
 
     def get(self, now: datetime):
         morning, high = self.tariff[0]
         evening, low = self.tariff[1]
         if now.month in range(4, 11):
-            return low + self.tax + self.spot_add
+            return low + self.spot_add
         elif now.weekday() in range(5, 7):
-            return low + self.tax + self.spot_add
-        elif now.hour < morning and now.hour >= evening:
-            return low + self.tax + self.spot_add
+            return low + self.spot_add
+        elif now.hour < morning or now.hour >= evening:
+            return low + self.spot_add
         else:
-            return high + self.tax + self.spot_add
+            return high + self.spot_add
 
     def current_price(self):
         return self.get(datetime.now(TZ))
@@ -78,7 +81,7 @@ class PriceList:
     cache_timeout_s = 8 * 3600
     default_price = 1000
     max_usage_hours = 24
-    currency_xrate = 12  # Initial guess, since might not yet be published
+    currency_xrate = 0
 
     def __init__(self, conf, service):
         self.cache: Path = Path(conf.get('cache'))
@@ -90,7 +93,7 @@ class PriceList:
         self.tariff: TransferPrice = TransferPrice(conf)
 
     def change_currency(self, price_series):
-        log(f'Currency exchange rate {self.currency_xrate}')
+        log(f'FIXME. Currency exchange rate {self.currency_xrate}')
         if self.currency_xrate and self.currency_xrate > 0:
             # MW -> kW and sek*100 (ore)
             price_series *= self.currency_xrate/10
@@ -141,27 +144,22 @@ class PriceList:
 
     def get_prices(self):
         now = datetime.now(TZ)
-        future = now + timedelta(hours=2)
         if (now - self.last_updated) > self.update_interval:
             if self.fetch_prices():
                 self.last_updated = now
             else:
                 return {}
         p_now = self.instant_price(now)
+        p_raw = p_now
+        p_add = self.tariff.get(now)
         log(f'Current get_prices (raw) {p_now}')
-        try:
-            p_fut = self.instant_price(future)
-        except Exception:
-            p_fut = self.default_price
         slot = self.current_ranking()
         if self.tariff:
             log('PriceList current transfer tariff plus tax '
                 f'{self.tariff.get(now)} öre')
             p_now += self.tariff.get(now)
-            p_fut += self.tariff.get(future)
-        p_now = round(p_now, 2)
-        p_fut = round(p_fut, 2)
-        return {'price': p_now, 'slot': slot, 'future_price': p_fut}
+        p_now = p_now
+        return {'raw': p_raw, 'add': p_add, 'price': p_now, 'slot': slot}
 
     def instant_price(self, now):
         """Filter out current hourly price from price list"""
@@ -177,15 +175,18 @@ class PriceList:
             log(f'ValueError ({e})')
             return self.default_price
 
-    def todays_sorted(self):
+    def todays_sorted(self, with_tariff=True):
         today_pricelist = self.get_daily_prices(today=True)
+        if with_tariff:
+            for idx, value in today_pricelist.items():
+                today_pricelist[idx] = value + self.tariff.get(idx.to_pydatetime())
         return today_pricelist.sort_values()
 
-    def current_ranking(self):
+    def current_ranking(self, with_tariff=True):
         hour = datetime.now(TZ).hour
-        for i, item in enumerate(self.todays_sorted().items()):
+        for idx, item in enumerate(self.todays_sorted(with_tariff).items()):
             if item[0].hour == hour:
-                return i
+                return idx
         return 24
 
 

@@ -119,7 +119,7 @@ class Nordpool(SpotpriceRequest):
     url += "?currency=SEK,SEK,SEK,SEK"
 
     def __init__(self):
-        print('Unavailable API from Nordpool')
+        log('Unavailable API from Nordpool')
         sys.exit(1)
         super().__init__()
 
@@ -143,8 +143,8 @@ class Nordpool(SpotpriceRequest):
                                 price = float(cell_str)/10.0 # data in kr/MWh
                             except ValueError as e:
                                 price = None
-                                print('Could not read price Value')
-                                print(e)
+                                log('Could not read price Value')
+                                log(e)
                             self.price_list[time] = price
 
 
@@ -169,7 +169,7 @@ def main(plot=False):
 
         plt.grid(True)
         plt.show()
-    print(all_prices)
+    log(all_prices)
 
 
 if __name__ == '__main__':

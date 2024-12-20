@@ -19,9 +19,6 @@ class general_sensors:
         """Must be imlemented by subclass"""
         raise NotImplementedError
 
-    def json(self):
-        return json.dumps(self.get_temperatures())
-
 
 class http_parsers:
 
@@ -82,24 +79,6 @@ class http_parsers:
         for tname in ('temperature', 'temp', 'temp:'):
             if tname in json_dict:
                 return json_dict[tname]
-
-    @staticmethod
-    def smhi_sort(json_dict):
-        def sort_key(x):
-            try:
-                return int(x.get('date'))
-            except ValueError:
-                log(f'http_parsers.smhi failed to parse one item {x}')
-                return 0
-
-        if values := json_dict.get('value'):
-            if isinstance(values, list) and len(values):
-                sample = sorted(values, key=sort_key)[-1]
-                try:
-                    return float(sample['value'])
-                except ValueError:
-                    log(f'http_parsers.smhi failed to parse one item {sample}')
-                    return None
 
     @staticmethod
     def smhi(json_dict):
